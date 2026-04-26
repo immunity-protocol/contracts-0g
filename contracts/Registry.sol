@@ -25,7 +25,7 @@ import {
 ///         Operators prepay USDC into a balance, publishers stake 1 USDC per
 ///         antibody (auto-released after 72h via FIFO sweep), and every check
 ///         atomically settles fees and rewards.
-abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
+contract Registry is IRegistry, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ------------------------------------------------------------------
@@ -418,5 +418,63 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
         unchecked { treasuryBalance -= amount; }
         usdc.safeTransfer(to, amount);
         emit TreasuryWithdrawn(to, amount);
+    }
+
+    // ------------------------------------------------------------------
+    //  Views
+    // ------------------------------------------------------------------
+
+    /// @inheritdoc IRegistry
+    function getAntibody(bytes32 keccakId) external view override returns (Antibody memory) {
+        return _antibodies[keccakId];
+    }
+
+    /// @inheritdoc IRegistry
+    function getAntibodyByImmSeq(uint32 immSeq) external view override returns (Antibody memory) {
+        return _antibodies[immSeqToKeccakId[immSeq]];
+    }
+
+    /// @inheritdoc IRegistry
+    function getPublisherStats(address publisher)
+        external
+        view
+        override
+        returns (PublisherStats memory)
+    {
+        return _publishers[publisher];
+    }
+
+    /// @inheritdoc IRegistry
+    function getActiveStakeCount() external view override returns (uint256) {
+        return stakeTail - stakeHead;
+    }
+
+    /// @inheritdoc IRegistry
+    /// @dev Bounded by `limit` — caller is responsible for choosing a sane value.
+    function getOldestExpiredStakes(uint256 limit)
+        external
+        view
+        override
+        returns (bytes32[] memory)
+    {
+        uint256 active = stakeTail - stakeHead;
+        if (limit > active) limit = active;
+        bytes32[] memory out = new bytes32[](limit);
+        uint256 head = stakeHead;
+        for (uint256 i; i < limit; ++i) {
+            out[i] = _stakeQueue[head + i];
+        }
+        return out;
+    }
+
+    /// @inheritdoc IRegistry
+    /// @notice Useful for SDK pre-flight: predict the keccakId before publishing.
+    function computeKeccakId(
+        uint8 abType,
+        uint8 flavor,
+        bytes32 primaryMatcherHash,
+        address publisher
+    ) external pure override returns (bytes32) {
+        return _hash(abType, flavor, primaryMatcherHash, publisher);
     }
 }

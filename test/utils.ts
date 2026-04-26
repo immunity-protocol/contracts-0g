@@ -12,9 +12,9 @@ export async function deployMockUSDC(ethers: any) {
   return usdc;
 }
 
-export async function deployTestRegistry(ethers: any, usdcAddress: string) {
-  const TestRegistry = await ethers.getContractFactory("TestRegistry");
-  const registry = await TestRegistry.deploy(usdcAddress);
+export async function deployRegistry(ethers: any, usdcAddress: string) {
+  const Registry = await ethers.getContractFactory("Registry");
+  const registry = await Registry.deploy(usdcAddress);
   await registry.waitForDeployment();
   return registry;
 }
@@ -23,6 +23,6 @@ export async function setupRegistryFixture() {
   const ethers = await getEthers();
   const [owner, alice, bob, carol] = await ethers.getSigners();
   const usdc = await deployMockUSDC(ethers);
-  const registry = await deployTestRegistry(ethers, await usdc.getAddress());
+  const registry = await deployRegistry(ethers, await usdc.getAddress());
   return { ethers, owner, alice, bob, carol, usdc, registry };
 }

@@ -199,6 +199,32 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
             createdAt,
             isSeeded
         );
+
+        _emitAuxiliary(p.abType, p.flavor, keccakId, p.auxiliaryKey, publisher);
+    }
+
+    /// @dev Dispatches the type-specific auxiliary event so consumers (relayer,
+    ///      explorer, per-type indexers) can filter by an indexed primitive
+    ///      instead of scanning every `AntibodyPublished`.
+    function _emitAuxiliary(
+        uint8   abType,
+        uint8   flavor,
+        bytes32 keccakId,
+        bytes32 auxKey,
+        address publisher
+    ) internal {
+        if (abType == uint8(AntibodyType.ADDRESS)) {
+            emit AddressBlocked(address(uint160(uint256(auxKey))), keccakId, publisher);
+        } else if (abType == uint8(AntibodyType.CALL_PATTERN)) {
+            emit CallPatternBlocked(bytes4(auxKey), keccakId, publisher);
+        } else if (abType == uint8(AntibodyType.BYTECODE)) {
+            emit BytecodeBlocked(auxKey, keccakId, publisher);
+        } else if (abType == uint8(AntibodyType.GRAPH)) {
+            emit GraphTaintAdded(auxKey, keccakId, publisher);
+        } else {
+            // SEMANTIC — the indexed key is the flavor, not auxKey.
+            emit SemanticPatternAdded(flavor, keccakId, publisher);
+        }
     }
 
     /// @dev Canonical content-addressed antibody identifier.

@@ -303,5 +303,65 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
         }
 
         emit CheckSettled(msg.sender, antibodyId, wasMatch, CHECK_FEE, uint64(block.timestamp));
+
+        // Opportunistic sweep — replaces a Chainlink/Gelato keeper. Caller earns
+        // a small bounty per released stake, paid from treasury.
+        _sweep(SWEEP_BATCH_SIZE);
+    }
+
+    // ------------------------------------------------------------------
+    //  FIFO sweep of expired stakes
+    // ------------------------------------------------------------------
+
+    /// @inheritdoc IRegistry
+    /// @dev Public unguarded backup — anyone can call to release expired stakes
+    ///      without paying a check fee. Caller still earns the per-stake bounty.
+    function sweepExpired() external override nonReentrant returns (uint256) {
+        return _sweep(SWEEP_BATCH_SIZE);
+    }
+
+    /// @dev Walks the FIFO queue from `stakeHead` for at most `batchSize` entries.
+    ///      Releases each entry whose `stakeLockUntil <= block.timestamp` and is
+    ///      still ACTIVE; skips (advances over) entries whose status is no longer
+    ///      ACTIVE (e.g. slashed). Stops as soon as it sees a still-locked entry,
+    ///      since the queue is monotonic in `stakeLockUntil`.
+    function _sweep(uint256 batchSize) internal returns (uint256 numReleased) {
+        uint256 head = stakeHead;
+        uint256 tail = stakeTail;
+        uint256 walked;
+
+        while (walked < batchSize && head < tail) {
+            bytes32 id = _stakeQueue[head];
+            Antibody storage ab = _antibodies[id];
+
+            if (ab.status != uint8(Status.ACTIVE)) {
+                // Stake already routed elsewhere (slash etc.) — skip.
+                unchecked { head++; walked++; }
+                continue;
+            }
+            if (ab.stakeLockUntil > block.timestamp) {
+                // FIFO: nothing past this point can be ready either.
+                break;
+            }
+
+            uint256 amount = ab.stakeAmount;
+            address publisher = ab.publisher;
+            balances[publisher] += amount;
+            emit StakeReleased(id, publisher, amount, uint64(block.timestamp));
+
+            unchecked { head++; walked++; numReleased++; }
+        }
+
+        stakeHead = head;
+
+        if (numReleased > 0) {
+            uint256 desired = numReleased * SWEEP_BOUNTY;
+            uint256 paid = desired > treasuryBalance ? treasuryBalance : desired;
+            if (paid > 0) {
+                unchecked { treasuryBalance -= paid; }
+                balances[msg.sender] += paid;
+            }
+            emit StakeSwept(msg.sender, numReleased, paid);
+        }
     }
 }

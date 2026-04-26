@@ -15,8 +15,6 @@ contract TestRegistry is Registry {
 
     constructor(address _usdc) Registry(_usdc) {}
 
-    function check(bytes32) external pure override returns (bool) { revert TestStub(); }
-
     function sweepExpired() external pure override returns (uint256) { revert TestStub(); }
 
     function slash(bytes32) external pure override { revert TestStub(); }

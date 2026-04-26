@@ -246,4 +246,62 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
     {
         return _publish(params, msg.sender, PUBLISH_STAKE, false);
     }
+
+    // ------------------------------------------------------------------
+    //  Check (hot path)
+    // ------------------------------------------------------------------
+
+    /// @inheritdoc IRegistry
+    /// @dev Pass `bytes32(0)` for a no-match check (caller still pays fee → treasury).
+    ///      Sweep of expired stakes is wired in alongside the sweep implementation.
+    function check(bytes32 antibodyId)
+        external
+        override
+        nonReentrant
+        returns (bool settled)
+    {
+        // Debit fee from caller's prepaid balance.
+        uint256 bal = balances[msg.sender];
+        if (bal < CHECK_FEE) revert InsufficientBalance();
+        unchecked { balances[msg.sender] = bal - CHECK_FEE; }
+
+        bool wasMatch;
+        if (antibodyId != bytes32(0)) {
+            Antibody storage ab = _antibodies[antibodyId];
+            // Eligible iff exists, ACTIVE, and not past expiry.
+            if (
+                ab.publisher != address(0) &&
+                ab.status == uint8(Status.ACTIVE) &&
+                (ab.expiresAt == 0 || ab.expiresAt > block.timestamp)
+            ) {
+                uint256 publisherReward = (CHECK_FEE * PUBLISHER_REWARD_BPS) / BPS_DENOMINATOR;
+                // Subtract from full fee so the split sums exactly even with rounding.
+                uint256 treasuryReward = CHECK_FEE - publisherReward;
+
+                balances[ab.publisher] += publisherReward;
+                treasuryBalance += treasuryReward;
+                unchecked {
+                    _publishers[ab.publisher].totalEarned += uint128(publisherReward);
+                }
+
+                wasMatch = true;
+                settled = true;
+
+                emit AntibodyMatched(
+                    antibodyId,
+                    msg.sender,
+                    ab.publisher,
+                    ab.reviewer,
+                    publisherReward,
+                    treasuryReward
+                );
+            }
+        }
+
+        if (!wasMatch) {
+            treasuryBalance += CHECK_FEE;
+        }
+
+        emit CheckSettled(msg.sender, antibodyId, wasMatch, CHECK_FEE, uint64(block.timestamp));
+    }
 }

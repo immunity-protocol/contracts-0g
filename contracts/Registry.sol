@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {ZeroAddress} from "./libraries/Errors.sol";
+import {ZeroAddress, ZeroAmount, InsufficientBalance} from "./libraries/Errors.sol";
 
 /// @title Immunity Registry — 0G Chain antibody registry, staking, and rewards.
 /// @notice Source of truth for the trust layer of the Immunity protocol.
@@ -72,5 +72,28 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
     constructor(address _usdc) Ownable(msg.sender) {
         if (_usdc == address(0)) revert ZeroAddress();
         usdc = IERC20(_usdc);
+    }
+
+    // ------------------------------------------------------------------
+    //  Operator balance — deposit / withdraw
+    // ------------------------------------------------------------------
+
+    /// @inheritdoc IRegistry
+    /// @dev Caller must approve `amount` USDC to this contract first.
+    function deposit(uint256 amount) external override nonReentrant {
+        if (amount == 0) revert ZeroAmount();
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        balances[msg.sender] += amount;
+        emit Deposited(msg.sender, amount);
+    }
+
+    /// @inheritdoc IRegistry
+    function withdraw(uint256 amount) external override nonReentrant {
+        if (amount == 0) revert ZeroAmount();
+        uint256 bal = balances[msg.sender];
+        if (bal < amount) revert InsufficientBalance();
+        unchecked { balances[msg.sender] = bal - amount; }
+        usdc.safeTransfer(msg.sender, amount);
+        emit Withdrew(msg.sender, amount);
     }
 }

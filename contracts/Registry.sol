@@ -270,9 +270,12 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
         bool wasMatch;
         if (antibodyId != bytes32(0)) {
             Antibody storage ab = _antibodies[antibodyId];
+            // Cache publisher once — used for eligibility, balance credit,
+            // stats update, and event topic. Saves repeated SLOADs of slot 5.
+            address pub = ab.publisher;
             // Eligible iff exists, ACTIVE, and not past expiry.
             if (
-                ab.publisher != address(0) &&
+                pub != address(0) &&
                 ab.status == uint8(Status.ACTIVE) &&
                 (ab.expiresAt == 0 || ab.expiresAt > block.timestamp)
             ) {
@@ -280,10 +283,10 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
                 // Subtract from full fee so the split sums exactly even with rounding.
                 uint256 treasuryReward = CHECK_FEE - publisherReward;
 
-                balances[ab.publisher] += publisherReward;
+                balances[pub] += publisherReward;
                 treasuryBalance += treasuryReward;
                 unchecked {
-                    _publishers[ab.publisher].totalEarned += uint128(publisherReward);
+                    _publishers[pub].totalEarned += uint128(publisherReward);
                 }
 
                 wasMatch = true;
@@ -292,7 +295,7 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
                 emit AntibodyMatched(
                     antibodyId,
                     msg.sender,
-                    ab.publisher,
+                    pub,
                     ab.reviewer,
                     publisherReward,
                     treasuryReward

@@ -7,7 +7,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IRegistry} from "./interfaces/IRegistry.sol";
-import {ZeroAddress, ZeroAmount, InsufficientBalance} from "./libraries/Errors.sol";
+import {
+    ZeroAddress,
+    ZeroAmount,
+    InsufficientBalance,
+    AntibodyExists,
+    InvalidAntibodyType,
+    InvalidVerdict,
+    InvalidConfidence,
+    InvalidSeverity
+} from "./libraries/Errors.sol";
 
 /// @title Immunity Registry — 0G Chain antibody registry, staking, and rewards.
 /// @notice Source of truth for the trust layer of the Immunity protocol.
@@ -95,5 +104,120 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
         unchecked { balances[msg.sender] = bal - amount; }
         usdc.safeTransfer(msg.sender, amount);
         emit Withdrew(msg.sender, amount);
+    }
+
+    // ------------------------------------------------------------------
+    //  Publish
+    // ------------------------------------------------------------------
+
+    /// @dev Internal worker shared by `publish` and (later) `seedAntibody`.
+    ///      `stake` is debited from `balances[publisher]`; pass 0 for seeded.
+    function _publish(
+        PublishParams calldata p,
+        address publisher,
+        uint256 stake,
+        bool isSeeded
+    )
+        internal
+        returns (bytes32 keccakId, uint32 immSeq)
+    {
+        // Validate enum bounds.
+        if (p.abType > uint8(AntibodyType.SEMANTIC)) revert InvalidAntibodyType();
+        if (p.verdict > uint8(Verdict.SUSPICIOUS)) revert InvalidVerdict();
+        if (p.confidence > 100) revert InvalidConfidence();
+        if (p.severity > 100) revert InvalidSeverity();
+
+        // Content-addressed identity. Same publisher republishing the same
+        // (type, flavor, matcher) collides — that's the duplicate guard.
+        keccakId = _hash(p.abType, p.flavor, p.primaryMatcherHash, publisher);
+        if (_antibodies[keccakId].publisher != address(0)) revert AntibodyExists();
+
+        // Debit stake from publisher's prepaid balance.
+        if (stake != 0) {
+            uint256 bal = balances[publisher];
+            if (bal < stake) revert InsufficientBalance();
+            unchecked { balances[publisher] = bal - stake; }
+            _stakeQueue[stakeTail++] = keccakId;
+        }
+
+        // Allocate sequence (starts at 1; 0 reserved as "unset" sentinel).
+        immSeq = ++nextImmSeq;
+
+        // Reviewer defaults to publisher when caller passes address(0).
+        address reviewer = p.reviewer == address(0) ? publisher : p.reviewer;
+
+        uint64 createdAt = uint64(block.timestamp);
+        uint64 stakeLockUntil = stake == 0 ? 0 : createdAt + STAKE_LOCK_DURATION;
+
+        _antibodies[keccakId] = Antibody({
+            primaryMatcherHash: p.primaryMatcherHash,
+            evidenceCid:        p.evidenceCid,
+            contextHash:        p.contextHash,
+            embeddingHash:      p.embeddingHash,
+            attestation:        p.attestation,
+            publisher:          publisher,
+            stakeLockUntil:     stakeLockUntil,
+            immSeq:             immSeq,
+            reviewer:           reviewer,
+            expiresAt:          p.expiresAt,
+            abType:             p.abType,
+            flavor:             p.flavor,
+            verdict:            p.verdict,
+            confidence:         p.confidence,
+            createdAt:          createdAt,
+            stakeAmount:        uint96(stake),
+            severity:           p.severity,
+            status:             uint8(Status.ACTIVE),
+            isSeeded:           isSeeded ? 1 : 0
+        });
+        immSeqToKeccakId[immSeq] = keccakId;
+
+        PublisherStats storage stats = _publishers[publisher];
+        unchecked {
+            stats.totalStaked  += uint128(stake);
+            stats.publishedCount += 1;
+        }
+
+        emit AntibodyPublished(
+            keccakId,
+            immSeq,
+            publisher,
+            p.abType,
+            p.flavor,
+            p.verdict,
+            p.severity,
+            p.confidence,
+            reviewer,
+            p.primaryMatcherHash,
+            p.evidenceCid,
+            p.contextHash,
+            p.embeddingHash,
+            p.attestation,
+            stake,
+            stakeLockUntil,
+            p.expiresAt,
+            createdAt,
+            isSeeded
+        );
+    }
+
+    /// @dev Canonical content-addressed antibody identifier.
+    function _hash(
+        uint8 abType,
+        uint8 flavor,
+        bytes32 primaryMatcherHash,
+        address publisher
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encode(abType, flavor, primaryMatcherHash, publisher));
+    }
+
+    /// @inheritdoc IRegistry
+    function publish(PublishParams calldata params)
+        external
+        override
+        nonReentrant
+        returns (bytes32 keccakId, uint32 immSeq)
+    {
+        return _publish(params, msg.sender, PUBLISH_STAKE, false);
     }
 }

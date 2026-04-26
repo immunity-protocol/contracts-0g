@@ -15,13 +15,6 @@ contract TestRegistry is Registry {
 
     constructor(address _usdc) Registry(_usdc) {}
 
-    function publish(IRegistry.PublishParams calldata)
-        external
-        pure
-        override
-        returns (bytes32, uint32)
-    { revert TestStub(); }
-
     function check(bytes32) external pure override returns (bool) { revert TestStub(); }
 
     function sweepExpired() external pure override returns (uint256) { revert TestStub(); }

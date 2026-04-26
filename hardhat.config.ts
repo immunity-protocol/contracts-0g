@@ -11,15 +11,24 @@ import { configVariable } from "hardhat/config";
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthersPlugin],
   solidity: {
+    // Both profiles need viaIR — `default` is used for `hardhat compile`/`test`,
+    // `production` is what `hardhat ignition deploy` switches to. Without
+    // viaIR on the production profile, `publish()` hits "Stack too deep"
+    // because the AntibodyPublished event emits 19 args.
     profiles: {
       default: {
         version: "0.8.24",
         settings: {
           evmVersion: "shanghai",
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
+          optimizer: { enabled: true, runs: 200 },
+          viaIR: true,
+        },
+      },
+      production: {
+        version: "0.8.24",
+        settings: {
+          evmVersion: "shanghai",
+          optimizer: { enabled: true, runs: 200 },
           viaIR: true,
         },
       },

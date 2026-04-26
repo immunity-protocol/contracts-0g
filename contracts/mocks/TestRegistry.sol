@@ -15,17 +15,6 @@ contract TestRegistry is Registry {
 
     constructor(address _usdc) Registry(_usdc) {}
 
-    function slash(bytes32) external pure override { revert TestStub(); }
-
-    function seedAntibody(IRegistry.PublishParams calldata)
-        external
-        pure
-        override
-        returns (bytes32, uint32)
-    { revert TestStub(); }
-
-    function withdrawTreasury(uint256, address) external pure override { revert TestStub(); }
-
     // View functions are wired up early so other in-progress test files can
     // assert against state. These will move to `Registry.sol` in the view
     // functions commit and then be removed from this mock.

@@ -12,6 +12,8 @@ import {
     ZeroAmount,
     InsufficientBalance,
     AntibodyExists,
+    AntibodyNotFound,
+    AntibodyNotActive,
     InvalidAntibodyType,
     InvalidVerdict,
     InvalidConfidence,
@@ -363,5 +365,58 @@ abstract contract Registry is IRegistry, Ownable, ReentrancyGuard {
             }
             emit StakeSwept(msg.sender, numReleased, paid);
         }
+    }
+
+    // ------------------------------------------------------------------
+    //  Admin — slash, seed, treasury withdrawal
+    // ------------------------------------------------------------------
+
+    /// @inheritdoc IRegistry
+    /// @notice v1 slashing is admin-only on demonstrated false positive.
+    ///         The publisher's locked stake is forfeited to the treasury and
+    ///         the antibody is marked SLASHED. The queue entry is left in place;
+    ///         `_sweep` skips it because status is no longer ACTIVE.
+    function slash(bytes32 antibodyId) external override onlyOwner nonReentrant {
+        Antibody storage ab = _antibodies[antibodyId];
+        if (ab.publisher == address(0)) revert AntibodyNotFound();
+        if (ab.status != uint8(Status.ACTIVE)) revert AntibodyNotActive();
+
+        uint256 stake = ab.stakeAmount;
+        ab.status = uint8(Status.SLASHED);
+        ab.stakeAmount = 0;
+
+        treasuryBalance += stake;
+        unchecked { _publishers[ab.publisher].slashedCount += 1; }
+
+        emit AntibodySlashed(antibodyId, ab.publisher, stake);
+    }
+
+    /// @inheritdoc IRegistry
+    /// @notice Admin-seeded antibody — no stake, no rewards on match,
+    ///         not enqueued for sweep. Publisher = the admin.
+    function seedAntibody(PublishParams calldata params)
+        external
+        override
+        onlyOwner
+        nonReentrant
+        returns (bytes32 keccakId, uint32 immSeq)
+    {
+        (keccakId, immSeq) = _publish(params, msg.sender, 0, true);
+        emit Seeded(keccakId, immSeq);
+    }
+
+    /// @inheritdoc IRegistry
+    function withdrawTreasury(uint256 amount, address to)
+        external
+        override
+        onlyOwner
+        nonReentrant
+    {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (amount > treasuryBalance) revert InsufficientBalance();
+        unchecked { treasuryBalance -= amount; }
+        usdc.safeTransfer(to, amount);
+        emit TreasuryWithdrawn(to, amount);
     }
 }

@@ -85,8 +85,12 @@ echo "  Registry deployed at: ${REGISTRY_ADDRESS}"
 echo ""
 
 # ------------------------------------------------------------------
-# Step 5 — write .deploy.json (consumed by SDK + indexer + relayer)
+# Step 5 — write .deploy.json + network.json
 # ------------------------------------------------------------------
+# .deploy.json is the deploy receipt (addresses + tx + timestamp).
+# network.json is the canonical 11-field NetworkConfig snippet — the SDK and
+# app sync from this file rather than re-deriving values, so a redeploy is
+# a one-file copy across the three repos.
 cat > "${OUTPUT_FILE}" <<EOF
 {
   "network": "${NETWORK}",
@@ -96,7 +100,25 @@ cat > "${OUTPUT_FILE}" <<EOF
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF
-echo "Step 5: wrote ${OUTPUT_FILE}"
+echo "Step 5a: wrote ${OUTPUT_FILE}"
+
+NETWORK_JSON="network.json"
+cat > "${NETWORK_JSON}" <<EOF
+{
+  "name": "galileo-testnet",
+  "chainId": ${CHAIN_ID},
+  "rpcUrl": "https://evmrpc-testnet.0g.ai",
+  "registryAddress": "${REGISTRY_ADDRESS}",
+  "usdcAddress": "${USDC_ADDRESS}",
+  "blockExplorerUrl": "https://chainscan-galileo.0g.ai",
+  "storageIndexerUrl": "https://indexer-storage-testnet-turbo.0g.ai",
+  "computeProvider": "0xa48f01287233509FD694a22Bf840225062E67836",
+  "computeModel": "qwen-2.5-7b-instruct",
+  "axlHubs": [],
+  "ensRpcUrl": "https://eth.llamarpc.com"
+}
+EOF
+echo "Step 5b: wrote ${NETWORK_JSON}"
 echo ""
 
 # ------------------------------------------------------------------

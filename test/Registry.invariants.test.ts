@@ -94,7 +94,7 @@ describe("Registry — invariants", function () {
         } else if (action < 0.55) {
           // check (50/50 match vs no-match)
           const id = knownIds.length > 0 && rng() < 0.5 ? pick(knownIds) : ZERO_BYTES32;
-          await registry.connect(op).check(id);
+          await registry.connect(op).check(id, ethers.ZeroAddress, 0n, 0n);
         } else if (action < 0.65) {
           // withdraw a small amount
           const bal: bigint = await registry.balances(op.address);
@@ -146,7 +146,7 @@ describe("Registry — invariants", function () {
     expect(swept.args.bountyPaid).to.equal(0n);
 
     // Phase 2: queue is empty; seed treasury via no-match checks (sweeps no-op).
-    for (let i = 0; i < 10; i++) await registry.connect(bob).check(ZERO_BYTES32);
+    for (let i = 0; i < 10; i++) await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
     const treasuryAfterSeeding = await registry.treasuryBalance();
     expect(treasuryAfterSeeding).to.be.gt(0n);
 
@@ -186,7 +186,7 @@ describe("Registry — invariants", function () {
     await registry.connect(alice).publish(makeParams("settle"));
     const id = await registry.computeKeccakId(0, 0, ethers.id("settle"), alice.address);
 
-    const tx = await registry.connect(bob).check(id);
+    const tx = await registry.connect(bob).check(id, ethers.ZeroAddress, 0n, 0n);
     const receipt = await tx.wait();
     const matched = receipt.logs
       .map((l: any) => { try { return registry.interface.parseLog(l); } catch { return null; } })

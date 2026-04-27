@@ -58,20 +58,20 @@ describe("Registry — check", function () {
       const treasuryBefore = await registry.treasuryBalance();
       const bobBefore = await registry.balances(bob.address);
 
-      await registry.connect(bob).check(ZERO_BYTES32);
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
 
       expect(await registry.balances(bob.address)).to.equal(bobBefore - CHECK_FEE);
       expect(await registry.treasuryBalance()).to.equal(treasuryBefore + CHECK_FEE);
     });
 
     it("emits CheckSettled with wasMatch=false", async function () {
-      await expect(registry.connect(bob).check(ZERO_BYTES32))
+      await expect(registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n))
         .to.emit(registry, "CheckSettled")
-        .withArgs(bob.address, ZERO_BYTES32, false, CHECK_FEE, anyUint());
+        .withArgs(bob.address, ZERO_BYTES32, ethers.ZeroAddress, false, CHECK_FEE, 0n, 0n, anyUint());
     });
 
     it("does not emit AntibodyMatched", async function () {
-      await expect(registry.connect(bob).check(ZERO_BYTES32))
+      await expect(registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n))
         .to.not.emit(registry, "AntibodyMatched");
     });
 
@@ -79,9 +79,9 @@ describe("Registry — check", function () {
       const unknown = ethers.id("does-not-exist");
       const treasuryBefore = await registry.treasuryBalance();
 
-      await expect(registry.connect(bob).check(unknown))
+      await expect(registry.connect(bob).check(unknown, ethers.ZeroAddress, 0n, 0n))
         .to.emit(registry, "CheckSettled")
-        .withArgs(bob.address, unknown, false, CHECK_FEE, anyUint());
+        .withArgs(bob.address, unknown, ethers.ZeroAddress, false, CHECK_FEE, 0n, 0n, anyUint());
 
       expect(await registry.treasuryBalance()).to.equal(treasuryBefore + CHECK_FEE);
     });
@@ -92,38 +92,80 @@ describe("Registry — check", function () {
       const aliceBefore = await registry.balances(alice.address);
       const treasuryBefore = await registry.treasuryBalance();
 
-      await registry.connect(bob).check(publishedId);
+      await registry.connect(bob).check(publishedId, ethers.ZeroAddress, 0n, 0n);
 
       expect(await registry.balances(alice.address)).to.equal(aliceBefore + PUBLISHER_REWARD);
       expect(await registry.treasuryBalance()).to.equal(treasuryBefore + TREASURY_REWARD);
     });
 
     it("emits AntibodyMatched with the right amounts", async function () {
-      await expect(registry.connect(bob).check(publishedId))
+      await expect(registry.connect(bob).check(publishedId, ethers.ZeroAddress, 0n, 0n))
         .to.emit(registry, "AntibodyMatched")
         .withArgs(
           publishedId,
           bob.address,
           alice.address,
-          alice.address, // reviewer defaults to publisher
+          ethers.ZeroAddress,            // tokenAddress
+          0n,                             // tokenAmount
+          0n,                             // originChainId
           PUBLISHER_REWARD,
           TREASURY_REWARD,
+          alice.address,                  // reviewer defaults to publisher
         );
     });
 
     it("emits CheckSettled with wasMatch=true", async function () {
-      await expect(registry.connect(bob).check(publishedId))
+      await expect(registry.connect(bob).check(publishedId, ethers.ZeroAddress, 0n, 0n))
         .to.emit(registry, "CheckSettled")
-        .withArgs(bob.address, publishedId, true, CHECK_FEE, anyUint());
+        .withArgs(bob.address, publishedId, ethers.ZeroAddress, true, CHECK_FEE, 0n, 0n, anyUint());
+    });
+
+    it("propagates SDK-supplied tokenAddress, tokenAmount, originChainId on both events", async function () {
+      const TOKEN = ethers.getAddress("0x000000000000000000000000000000000000c0de");
+      const AMOUNT = 1_500_000_000n; // 1500 USDC
+      const ORIGIN = 8453n;          // Base mainnet
+
+      await expect(registry.connect(bob).check(publishedId, TOKEN, AMOUNT, ORIGIN))
+        .to.emit(registry, "CheckSettled")
+        .withArgs(
+          bob.address,
+          publishedId,
+          TOKEN,
+          true,
+          CHECK_FEE,
+          ORIGIN,
+          AMOUNT,
+          anyUint(),
+        );
+    });
+
+    it("propagates the same telemetry trio on AntibodyMatched", async function () {
+      const TOKEN = ethers.getAddress("0x111122223333444455556666777788889999aaaa");
+      const AMOUNT = 42n;
+      const ORIGIN = 1n; // Ethereum
+
+      await expect(registry.connect(bob).check(publishedId, TOKEN, AMOUNT, ORIGIN))
+        .to.emit(registry, "AntibodyMatched")
+        .withArgs(
+          publishedId,
+          bob.address,
+          alice.address,
+          TOKEN,
+          AMOUNT,
+          ORIGIN,
+          PUBLISHER_REWARD,
+          TREASURY_REWARD,
+          alice.address,
+        );
     });
 
     it("returns true on settle", async function () {
-      const result = await registry.connect(bob).check.staticCall(publishedId);
+      const result = await registry.connect(bob).check.staticCall(publishedId, ethers.ZeroAddress, 0n, 0n);
       expect(result).to.equal(true);
     });
 
     it("increments publisher's totalEarned", async function () {
-      await registry.connect(bob).check(publishedId);
+      await registry.connect(bob).check(publishedId, ethers.ZeroAddress, 0n, 0n);
       const stats = await registry.getPublisherStats(alice.address);
       expect(stats.totalEarned).to.equal(PUBLISHER_REWARD);
     });
@@ -133,7 +175,7 @@ describe("Registry — check", function () {
       const treasuryBefore = await registry.treasuryBalance();
 
       for (let i = 0; i < 10; i++) {
-        await registry.connect(bob).check(publishedId);
+        await registry.connect(bob).check(publishedId, ethers.ZeroAddress, 0n, 0n);
       }
 
       expect(await registry.balances(alice.address)).to.equal(aliceBefore + PUBLISHER_REWARD * 10n);
@@ -154,7 +196,7 @@ describe("Registry — check", function () {
       await ethers.provider.send("evm_mine", []);
 
       const aliceBefore = await registry.balances(alice.address);
-      await registry.connect(bob).check(expId);
+      await registry.connect(bob).check(expId, ethers.ZeroAddress, 0n, 0n);
       // Publisher gets nothing; treasury gets full fee.
       expect(await registry.balances(alice.address)).to.equal(aliceBefore);
     });
@@ -163,7 +205,7 @@ describe("Registry — check", function () {
   describe("reverts", function () {
     it("InsufficientBalance when caller balance < CHECK_FEE", async function () {
       // carol has no balance
-      await expect(registry.connect(carol).check(ZERO_BYTES32))
+      await expect(registry.connect(carol).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n))
         .to.be.revertedWithCustomError(registry, "InsufficientBalance");
     });
   });
@@ -172,8 +214,8 @@ describe("Registry — check", function () {
     it("preserves total funds across mixed checks", async function () {
       // After setup: alice = 5M - 1M stake = 4M, bob = 1M, treasury = 0.
       // 1 match check + 1 no-match check from bob.
-      await registry.connect(bob).check(publishedId);
-      await registry.connect(bob).check(ZERO_BYTES32);
+      await registry.connect(bob).check(publishedId, ethers.ZeroAddress, 0n, 0n);
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
 
       const aliceBal   = await registry.balances(alice.address);
       const bobBal     = await registry.balances(bob.address);

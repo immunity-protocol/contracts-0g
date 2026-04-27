@@ -144,7 +144,7 @@ describe("Registry — sweep", function () {
 
     it("pays the sweeper a bounty per released stake from treasury", async function () {
       // Seed treasury via a no-match check.
-      await registry.connect(bob).check(ZERO_BYTES32);
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
       const treasuryBefore = await registry.treasuryBalance();
       const bobBefore = await registry.balances(bob.address);
 
@@ -177,7 +177,7 @@ describe("Registry — sweep", function () {
     });
 
     it("emits StakeSwept once with the correct totals", async function () {
-      await registry.connect(bob).check(ZERO_BYTES32);   // seeds treasury > 100 * 4
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);   // seeds treasury > 100 * 4
       await publishMany(alice, 4);
       await advanceTimeBy(STAKE_LOCK_DURATION + 1n);
 
@@ -193,7 +193,7 @@ describe("Registry — sweep", function () {
       await advanceTimeBy(STAKE_LOCK_DURATION + 1n);
       const aliceBefore = await registry.balances(alice.address);
 
-      const tx = await registry.connect(bob).check(ZERO_BYTES32);
+      const tx = await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
       await expect(tx).to.emit(registry, "StakeSwept");
 
       // Both stakes released to alice, plus alice gets nothing else (bob's check was no-match).
@@ -203,7 +203,7 @@ describe("Registry — sweep", function () {
 
     it("does not emit StakeSwept on check() when nothing is releasable", async function () {
       await publishMany(alice, 1);  // not yet expired
-      await expect(registry.connect(bob).check(ZERO_BYTES32))
+      await expect(registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n))
         .to.not.emit(registry, "StakeSwept");
     });
   });

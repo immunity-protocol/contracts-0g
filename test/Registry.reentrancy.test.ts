@@ -37,8 +37,8 @@ describe("Registry — reentrancy", function () {
   it("blocks reentrancy through withdrawTreasury", async function () {
     // Drive a treasury balance via no-match checks, then attempt reentry.
     await malicious.setAttacking(false);
-    await registry.connect(alice).check("0x" + "00".repeat(32));
-    await registry.connect(alice).check("0x" + "00".repeat(32));
+    await registry.connect(alice).check("0x" + "00".repeat(32), ethers.ZeroAddress, 0n, 0n);
+    await registry.connect(alice).check("0x" + "00".repeat(32), ethers.ZeroAddress, 0n, 0n);
 
     await malicious.setAttacking(true);
     await expect(registry.connect(owner).withdrawTreasury(100n, owner.address))

@@ -150,21 +150,37 @@ interface IRegistry {
 
     // ---- Lifecycle, balance, and economic events.
 
+    /// @notice Carries the SDK's observable tx facts (`tokenAddress`, `tokenAmount`,
+    ///         `originChainId`) so the indexer can attach a USD value off-chain.
+    ///         `tokenAddress` is the most useful filter (e.g. "all USDC events"), so
+    ///         it gets one of the indexed slots; the EVM only allows 3 indexed
+    ///         params per event total. `originChainId` is low cardinality and easy
+    ///         to scan in memory.
     event CheckSettled(
         address indexed agent,
         bytes32 indexed antibodyId,
+        address indexed tokenAddress,
         bool    wasMatch,
         uint256 fee,
+        uint256 originChainId,
+        uint256 tokenAmount,
         uint64  timestamp
     );
 
+    /// @notice Same telemetry trio as CheckSettled. Existing indexed slots
+    ///         (keccakId, agent, publisher) are kept; the new fields are
+    ///         non-indexed because the AntibodyMatched query path is already
+    ///         well-served by keccakId and publisher.
     event AntibodyMatched(
         bytes32 indexed keccakId,
         address indexed agent,
         address indexed publisher,
-        address reviewer,
+        address tokenAddress,
+        uint256 tokenAmount,
+        uint256 originChainId,
         uint256 publisherReward,
-        uint256 treasuryReward
+        uint256 treasuryReward,
+        address reviewer
     );
 
     event StakeReleased(
@@ -202,7 +218,16 @@ interface IRegistry {
         external
         returns (bytes32 keccakId, uint32 immSeq);
 
-    function check(bytes32 antibodyId) external returns (bool settled);
+    /// @param antibodyId     a known antibody keccak id (cache hit), or `bytes32(0)` for no-match
+    /// @param tokenAddress   the ERC20 contract being interacted with, or `address(0)` for native
+    /// @param tokenAmount    amount in the token's native decimals; `0` when no facts decoded
+    /// @param originChainId  chain id where the proposed tx would have executed; `0` when unknown
+    function check(
+        bytes32 antibodyId,
+        address tokenAddress,
+        uint256 tokenAmount,
+        uint256 originChainId
+    ) external returns (bool settled);
 
     function sweepExpired() external returns (uint256 numReleased);
 

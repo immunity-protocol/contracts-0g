@@ -255,8 +255,16 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
 
     /// @inheritdoc IRegistry
     /// @dev Pass `bytes32(0)` for a no-match check (caller still pays fee → treasury).
-    ///      Sweep of expired stakes is wired in alongside the sweep implementation.
-    function check(bytes32 antibodyId)
+    ///      The three telemetry params (`tokenAddress`, `tokenAmount`, `originChainId`)
+    ///      are SDK-derived observable facts about the proposed tx; the contract does
+    ///      NOT validate them — it just stores them in the event log so the indexer
+    ///      can attach a USD value off-chain.
+    function check(
+        bytes32 antibodyId,
+        address tokenAddress,
+        uint256 tokenAmount,
+        uint256 originChainId
+    )
         external
         override
         nonReentrant
@@ -296,9 +304,12 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
                     antibodyId,
                     msg.sender,
                     pub,
-                    ab.reviewer,
+                    tokenAddress,
+                    tokenAmount,
+                    originChainId,
                     publisherReward,
-                    treasuryReward
+                    treasuryReward,
+                    ab.reviewer
                 );
             }
         }
@@ -307,7 +318,16 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
             treasuryBalance += CHECK_FEE;
         }
 
-        emit CheckSettled(msg.sender, antibodyId, wasMatch, CHECK_FEE, uint64(block.timestamp));
+        emit CheckSettled(
+            msg.sender,
+            antibodyId,
+            tokenAddress,
+            wasMatch,
+            CHECK_FEE,
+            originChainId,
+            tokenAmount,
+            uint64(block.timestamp)
+        );
 
         // Opportunistic sweep — replaces a Chainlink/Gelato keeper. Caller earns
         // a small bounty per released stake, paid from treasury.

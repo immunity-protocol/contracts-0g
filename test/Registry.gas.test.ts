@@ -56,8 +56,8 @@ describe("Registry — gas budget", function () {
     // publisher's balance and treasuryBalance. The hot path measurement is
     // the second call, which is what the SDK's actual workload looks like
     // (publishers are repeatedly settled to).
-    await registry.connect(bob).check(id);
-    const tx = await registry.connect(bob).check(id);
+    await registry.connect(bob).check(id, ethers.ZeroAddress, 0n, 0n);
+    const tx = await registry.connect(bob).check(id, ethers.ZeroAddress, 0n, 0n);
     const receipt = await tx.wait();
 
     console.log(`        check() cache-hit gas used: ${receipt.gasUsed}`);
@@ -66,9 +66,9 @@ describe("Registry — gas budget", function () {
 
   it(`check() no-match stays under ${CHECK_FEE_GAS_BUDGET} gas`, async function () {
     // Warm bob's balance and treasury via a prior call.
-    await registry.connect(bob).check(ZERO_BYTES32);
+    await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
 
-    const tx = await registry.connect(bob).check(ZERO_BYTES32);
+    const tx = await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
     const receipt = await tx.wait();
 
     console.log(`        check() no-match gas used:  ${receipt.gasUsed}`);

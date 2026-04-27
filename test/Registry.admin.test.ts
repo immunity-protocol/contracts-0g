@@ -98,7 +98,7 @@ describe("Registry — admin (slash, seedAntibody, withdrawTreasury)", function 
       await registry.slash(id);
       const aliceBefore = await registry.balances(alice.address);
 
-      await registry.connect(bob).check(id);
+      await registry.connect(bob).check(id, ethers.ZeroAddress, 0n, 0n);
       // No publisher reward — entire fee goes to treasury.
       expect(await registry.balances(alice.address)).to.equal(aliceBefore);
     });
@@ -157,7 +157,7 @@ describe("Registry — admin (slash, seedAntibody, withdrawTreasury)", function 
       const id = await registry.computeKeccakId(0, 0, ethers.id("seed-5"), owner.address);
       const ownerBefore = await registry.balances(owner.address);
 
-      await registry.connect(bob).check(id);
+      await registry.connect(bob).check(id, ethers.ZeroAddress, 0n, 0n);
 
       expect(await registry.balances(owner.address)).to.equal(ownerBefore + PUBLISHER_REWARD);
     });
@@ -166,9 +166,9 @@ describe("Registry — admin (slash, seedAntibody, withdrawTreasury)", function 
   describe("withdrawTreasury", function () {
     beforeEach(async function () {
       // Seed treasury via three no-match checks → 3 * 2_000 = 6_000.
-      await registry.connect(bob).check(ZERO_BYTES32);
-      await registry.connect(bob).check(ZERO_BYTES32);
-      await registry.connect(bob).check(ZERO_BYTES32);
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
+      await registry.connect(bob).check(ZERO_BYTES32, ethers.ZeroAddress, 0n, 0n);
     });
 
     it("rejects non-owner callers", async function () {

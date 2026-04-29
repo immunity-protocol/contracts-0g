@@ -247,6 +247,17 @@ interface IRegistry {
 
     function getAntibodyByImmSeq(uint32 immSeq) external view returns (Antibody memory);
 
+    /// @notice Tier-2 lookup: resolve an antibody by its primary matcher hash.
+    /// @param  matcherHash  the canonicalized matcher hash the SDK computes
+    ///                      client-side (same value as `primaryMatcherHash`
+    ///                      passed to `publish`).
+    /// @return antibody     the full envelope, or zero-initialized if absent.
+    /// @return exists       true iff a record was found.
+    function getAntibodyByMatcherHash(bytes32 matcherHash)
+        external
+        view
+        returns (Antibody memory antibody, bool exists);
+
     function getPublisherStats(address publisher) external view returns (PublisherStats memory);
 
     function getActiveStakeCount() external view returns (uint256);

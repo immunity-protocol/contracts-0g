@@ -474,6 +474,20 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
     }
 
     /// @inheritdoc IRegistry
+    function getAntibodyByMatcherHash(bytes32 matcherHash)
+        external
+        view
+        override
+        returns (Antibody memory antibody, bool exists)
+    {
+        bytes32 keccakId = matcherIndex[matcherHash];
+        if (keccakId == bytes32(0)) {
+            return (antibody, false);
+        }
+        return (_antibodies[keccakId], true);
+    }
+
+    /// @inheritdoc IRegistry
     function getPublisherStats(address publisher)
         external
         view

@@ -8,6 +8,27 @@ The 0G Chain side of [Immunity](https://immunity.xyz) — a decentralized threat
 
 Operators prepay USDC into a balance via `deposit`. Publishers `publish` antibodies (signed, staked declarations that a specific pattern is malicious — wallet, call pattern, bytecode, taint graph, or semantic embedding) by locking 1 USDC for 72h. Every agent action calls `check(antibodyId)` which atomically (a) debits a 0.002 USDC fee, (b) settles 80% to the publisher and 20% to the treasury on a match (100% to treasury otherwise), and (c) opportunistically releases up to 5 oldest expired stakes from a FIFO queue, paying the caller a small bounty per release. The sweep mechanism removes any need for an external keeper.
 
+## The Registry as Tier-2 cache
+
+Immunity's SDK runs a three-tier lookup on every `check()`:
+
+```
+Tier 1 — Local cache    ~1 ms     hit: settle on chain
+Tier 2 — Registry RPC   ~200 ms   hit: settle + populate cache
+Tier 3 — TEE detection  ~3 s      only for genuinely novel threats
+```
+
+This contract is the canonical Tier-2. The SDK queries `getAntibodyByMatcherHash(bytes32)` whenever the local cache misses, and only falls through to TEE detection when the chain has no record either. This makes the Registry the source of truth and the cache a pure performance optimization on top of it.
+
+Two pieces back this:
+
+- A `matcherIndex` mapping (`bytes32 primaryMatcherHash → bytes32 keccakId`) populated on every publish. The SDK's per-type matcher-hash format (see `immunity-sdk/src/keccak/matchers/`) is the same bytes the contract stores, so the lookup is a single SLOAD chain plus the existing antibody read.
+- A revert (`AntibodyAlreadyExistsForMatcher(bytes32 existingKeccakId)`) when a different publisher tries to claim a matcher hash already in use. The error data carries the existing keccakId so the SDK can fetch and reuse the original antibody instead of minting a duplicate. This kills "ensemble" publishing of the same matcher and gives the first publisher a clean economic claim on subsequent matches.
+
+### TTL is reserved for v2
+
+`Antibody.expiresAt` and the per-call expiry filter in `check()` are wired but unused in v1: every SDK publish sets `expiresAt = 0` (permanent), and the explorer hides the field. Keeping the storage and event signatures in place lets v2 flip a single SDK flag to honor expiries without a contract redeploy.
+
 ## Setup
 
 Requires Node 22.10+ (Hardhat warns about newer majors but works).
@@ -30,7 +51,7 @@ Solidity is pinned to `0.8.24` with `evmVersion: "shanghai"` because 0G Galileo 
 npx hardhat test
 ```
 
-103 tests covering deposit/withdraw, publish (with all 5 typed auxiliary events), check (match + no-match + expiry), FIFO sweep (bounty + slashed-skip), slash, seedAntibody, withdrawTreasury, view functions, fuzz invariants on accounting & queue order, reentrancy guards, and a hot-path gas budget.
+110 tests covering deposit/withdraw, publish (with all 5 typed auxiliary events + matcher dedup), check (match + no-match + expiry), FIFO sweep (bounty + slashed-skip), slash, seedAntibody, withdrawTreasury, view functions (including the Tier-2 `getAntibodyByMatcherHash` lookup), fuzz invariants on accounting & queue order, reentrancy guards, and a hot-path gas budget.
 
 ## Deploy to 0G Galileo
 
@@ -114,7 +135,8 @@ The `auxiliaryKey` field on `PublishParams` carries the typed value; its interpr
 
 ## Design decisions worth knowing
 
-- **Content-addressed antibody IDs.** `keccakId = keccak256(abi.encode(abType, flavor, primaryMatcherHash, publisher))`. A publisher republishing the same matcher reverts with `AntibodyExists`. Different publishers can publish the same matcher — that's an ensemble signal, intentionally allowed.
+- **Content-addressed antibody IDs.** `keccakId = keccak256(abi.encode(abType, flavor, primaryMatcherHash, publisher))`. The same publisher republishing reverts with `AntibodyExists`. A different publisher claiming a matcher hash already in use reverts with `AntibodyAlreadyExistsForMatcher(existingKeccakId)` so the SDK can reuse the original antibody. The first publisher to flag a pattern keeps the economic claim; the chain enforces uniqueness regardless of SDK behavior.
+- **Tier-2 lookup index.** `matcherIndex` (`primaryMatcherHash → keccakId`) lets `getAntibodyByMatcherHash` return the antibody in a single SLOAD chain. This is what the SDK calls on cache miss before falling through to TEE detection.
 - **FIFO stake queue.** Implemented as `mapping(uint256 => bytes32)` with `head`/`tail` pointers (no array pop). Sweep walks from `head`, releases ACTIVE+unlocked stakes, skips slashed entries, and stops at the first not-yet-expired entry (queue is monotonic in `stakeLockUntil`).
 - **Sweep wired into `check`.** Replaces a Chainlink/Gelato keeper. Caller earns `SWEEP_BOUNTY` per stake released, capped at `treasuryBalance`.
 - **Slash is admin-only in v1.** Sets status to `SLASHED`, moves the locked stake to treasury. The challenge game (community-driven slashing) is v2.

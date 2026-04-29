@@ -7,6 +7,10 @@ pragma solidity ^0.8.24;
 error InsufficientBalance();
 error InsufficientStake();
 error AntibodyExists();
+/// @notice Reverted by `publish` when a different antibody already claims this
+///         primary matcher hash. The data field carries the existing keccakId
+///         so the SDK can fetch and reuse it instead of publishing a duplicate.
+error AntibodyAlreadyExistsForMatcher(bytes32 existingKeccakId);
 error AntibodyNotFound();
 error AntibodyNotActive();
 error StakeStillLocked();

@@ -11,7 +11,8 @@ import hre from "hardhat";
  * Reads from env:
  *   REGISTRY_ADDRESS    deployed Registry on Galileo
  *   DEMO_BLOCK_TARGET   Sepolia ERC20 address to permanently block
- *                       (defaults to INT_TOK_A from the integration pool)
+ *                       (defaults to INT_TOK_B / ETH-T from the integration
+ *                       pool — the destination token in the demo narrative)
  *   DEMO_BLOCK_CHAIN_ID chain id of the target address (defaults to Sepolia 11155111)
  *
  * Run once after redeploys:
@@ -31,7 +32,7 @@ async function main() {
         throw new Error("REGISTRY_ADDRESS env required");
     }
 
-    const target = (process.env.DEMO_BLOCK_TARGET ?? "0xF4F4d4f459b339c7234511547880E101073DCbCd").toLowerCase();
+    const target = (process.env.DEMO_BLOCK_TARGET ?? "0x479504943734d01548B2975227Bb6BfCF725c222").toLowerCase();
     const chainId = Number(process.env.DEMO_BLOCK_CHAIN_ID ?? 11155111);
 
     const connection = await hre.network.connect();

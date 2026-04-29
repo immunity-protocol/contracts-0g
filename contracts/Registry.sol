@@ -57,6 +57,12 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
     /// @notice Sequence number → keccakId. Sequence renders as IMM-YYYY-NNNN client-side.
     mapping(uint32 => bytes32) public immSeqToKeccakId;
 
+    /// @notice Primary matcher hash → keccakId. The Tier-2 lookup index that
+    ///         lets the SDK go straight from a canonicalized matcher to the
+    ///         existing antibody without walking events. Also enforces
+    ///         per-matcher uniqueness on publish.
+    mapping(bytes32 => bytes32) public matcherIndex;
+
     /// @notice Prepaid USDC balance per operator/publisher.
     mapping(address => uint256) public balances;
 

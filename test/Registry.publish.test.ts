@@ -165,17 +165,14 @@ describe("Registry — publish", function () {
       expect(stats.slashedCount).to.equal(0n);
     });
 
-    it("allows different publishers to publish the same matcher (ensemble)", async function () {
-      await fundOperator(bob, 5_000_000n);
+    it("populates matcherIndex with primaryMatcherHash → keccakId on publish", async function () {
       const params = makeParams();
+      await registry.connect(alice).publish(params);
 
-      await expect(registry.connect(alice).publish(params)).to.not.be.revert(ethers);
-      await expect(registry.connect(bob).publish(params)).to.not.be.revert(ethers);
-
-      // Both produce distinct keccakIds (publisher is part of the canonical input).
-      const idA = await registry.computeKeccakId(0, 0, params.primaryMatcherHash, alice.address);
-      const idB = await registry.computeKeccakId(0, 0, params.primaryMatcherHash, bob.address);
-      expect(idA).to.not.equal(idB);
+      const expectedId = await registry.computeKeccakId(
+        params.abType, params.flavor, params.primaryMatcherHash, alice.address,
+      );
+      expect(await registry.matcherIndex(params.primaryMatcherHash)).to.equal(expectedId);
     });
   });
 
@@ -190,6 +187,35 @@ describe("Registry — publish", function () {
       await registry.connect(alice).publish(params);
       await expect(registry.connect(alice).publish(params))
         .to.be.revertedWithCustomError(registry, "AntibodyExists");
+    });
+
+    it("AntibodyAlreadyExistsForMatcher when a different publisher claims the same matcher", async function () {
+      await fundOperator(bob, 5_000_000n);
+      const params = makeParams();
+
+      await registry.connect(alice).publish(params);
+      const aliceId = await registry.computeKeccakId(
+        params.abType, params.flavor, params.primaryMatcherHash, alice.address,
+      );
+
+      await expect(registry.connect(bob).publish(params))
+        .to.be.revertedWithCustomError(registry, "AntibodyAlreadyExistsForMatcher")
+        .withArgs(aliceId);
+    });
+
+    it("matcher dedup applies across abTypes (same matcher hash blocks any type)", async function () {
+      await fundOperator(bob, 5_000_000n);
+      const sharedMatcher = ethers.id("shared-matcher");
+
+      await registry.connect(alice).publish(makeParams({ abType: ABTYPE.ADDRESS, primaryMatcherHash: sharedMatcher }));
+      const firstId = await registry.computeKeccakId(ABTYPE.ADDRESS, 0, sharedMatcher, alice.address);
+
+      // Even a different abType cannot claim a matcher hash already in use.
+      await expect(
+        registry.connect(bob).publish(makeParams({ abType: ABTYPE.CALL_PATTERN, primaryMatcherHash: sharedMatcher })),
+      )
+        .to.be.revertedWithCustomError(registry, "AntibodyAlreadyExistsForMatcher")
+        .withArgs(firstId);
     });
 
     it("InvalidAntibodyType when abType > SEMANTIC (4)", async function () {

@@ -70,6 +70,45 @@ describe("Registry — view functions", function () {
     });
   });
 
+  describe("getAntibodyByMatcherHash", function () {
+    it("returns (zero, false) for an unknown matcher hash", async function () {
+      const result = await registry.getAntibodyByMatcherHash(ethers.id("never-published"));
+      expect(result.exists).to.equal(false);
+      expect(result.antibody.publisher).to.equal(ethers.ZeroAddress);
+      expect(result.antibody.stakeAmount).to.equal(0n);
+    });
+
+    it("returns the full antibody and true for a known matcher hash", async function () {
+      const params = makeParams("known-matcher", { confidence: 90, severity: 70 });
+      await registry.connect(alice).publish(params);
+
+      const result = await registry.getAntibodyByMatcherHash(params.primaryMatcherHash);
+      expect(result.exists).to.equal(true);
+      expect(result.antibody.publisher).to.equal(alice.address);
+      expect(result.antibody.confidence).to.equal(90);
+      expect(result.antibody.severity).to.equal(70);
+      expect(result.antibody.primaryMatcherHash).to.equal(params.primaryMatcherHash);
+    });
+
+    it("returns the same envelope as getAntibody(keccakId)", async function () {
+      const params = makeParams("parity");
+      await registry.connect(alice).publish(params);
+      const keccakId = await registry.computeKeccakId(
+        params.abType, params.flavor, params.primaryMatcherHash, alice.address,
+      );
+
+      const direct = await registry.getAntibody(keccakId);
+      const viaMatcher = await registry.getAntibodyByMatcherHash(params.primaryMatcherHash);
+
+      expect(viaMatcher.exists).to.equal(true);
+      expect(viaMatcher.antibody.primaryMatcherHash).to.equal(direct.primaryMatcherHash);
+      expect(viaMatcher.antibody.evidenceCid).to.equal(direct.evidenceCid);
+      expect(viaMatcher.antibody.contextHash).to.equal(direct.contextHash);
+      expect(viaMatcher.antibody.publisher).to.equal(direct.publisher);
+      expect(viaMatcher.antibody.immSeq).to.equal(direct.immSeq);
+    });
+  });
+
   describe("getPublisherStats", function () {
     it("returns zero stats for an unknown publisher", async function () {
       const stats = await registry.getPublisherStats(bob.address);

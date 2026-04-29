@@ -12,6 +12,7 @@ import {
     ZeroAmount,
     InsufficientBalance,
     AntibodyExists,
+    AntibodyAlreadyExistsForMatcher,
     AntibodyNotFound,
     AntibodyNotActive,
     InvalidAntibodyType,
@@ -139,6 +140,15 @@ contract Registry is IRegistry, Ownable, ReentrancyGuard {
         // (type, flavor, matcher) collides — that's the duplicate guard.
         keccakId = _hash(p.abType, p.flavor, p.primaryMatcherHash, publisher);
         if (_antibodies[keccakId].publisher != address(0)) revert AntibodyExists();
+
+        // Per-matcher uniqueness: any other publisher already claiming this
+        // primary matcher hash takes precedence; the second publisher must use
+        // the existing antibody instead of minting a duplicate.
+        bytes32 existingForMatcher = matcherIndex[p.primaryMatcherHash];
+        if (existingForMatcher != bytes32(0)) {
+            revert AntibodyAlreadyExistsForMatcher(existingForMatcher);
+        }
+        matcherIndex[p.primaryMatcherHash] = keccakId;
 
         // Debit stake from publisher's prepaid balance.
         if (stake != 0) {
